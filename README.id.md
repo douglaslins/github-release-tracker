@@ -1,0 +1,111 @@
+# GitHub Release Tracker
+
+Aplikasi Windows portable berukuran kecil untuk memantau release terbaru dari proyek GitHub yang Anda ikuti, dan memberi tahu kalau ada release baru. Tanpa akun, tanpa login, dan tanpa token.
+
+🇬🇧 [Read in English](README.md)
+
+<!-- Tambahkan screenshot Anda sendiri di sini, misalnya simpan sebagai docs/screenshot.png lalu pakai:
+![Screenshot](docs/screenshot.png)
+-->
+
+## Fitur
+
+- Tambah proyek dengan menempel URL GitHub atau `owner/repo`
+- Lihat nama proyek, repository, release saat ini, tanggal rilis, dan status sekilas
+- **Check for updates** menyegarkan semua proyek; proyek dengan release lebih baru disorot sebagai `Update available: v1.0 -> v1.1`
+- **Mark as seen** menghapus sorotan setelah Anda selesai menangani update
+- Klik dua kali pada proyek untuk membuka halaman release-nya di browser
+- Klik header **Project**, **Repository**, **Published**, atau **Status** untuk mengurutkan (klik lagi untuk membalik; panah menunjukkan arahnya)
+- **Import / Export** daftar proyek sebagai file `.json` (gabungkan atau ganti saat import)
+- Tombol mode **terang / gelap** (awalnya mengikuti tema Windows Anda)
+- Portable: satu file `.exe`, tanpa installer, tanpa entri registry
+
+Aplikasi ini hanya membaca informasi release. Ia tidak pernah mengunduh atau memasang apa pun.
+
+## Bahan yang perlu disiapkan
+
+Pilih baris yang sesuai dengan tujuan Anda.
+
+| Saya ingin... | Yang dibutuhkan |
+|---|---|
+| **Langsung memakai aplikasi** (`.exe` dari [Releases](https://github.com/santosasarno-code/github-release-tracker/releases)) | Windows 10 atau 11 dan koneksi internet. **Tidak perlu yang lain**: Python *tidak* diperlukan. |
+| **Menjalankan dari source** (`github_release_tracker.py`) | Windows 10/11 dan **Python 3.10 atau lebih baru** dari [python.org](https://www.python.org/downloads/windows/). Tidak perlu paket tambahan. |
+| **Membuat `.exe` sendiri** (`build.bat`) | Python yang sama, dengan opsi **"Add python.exe to PATH"** dicentang saat instalasi, dan koneksi internet (skrip mengunduh PyInstaller). |
+
+### Detail Python (hanya untuk menjalankan dari source atau membuat exe)
+
+- **Versi:** kodenya memakai Python standar dan sintaksnya jalan mulai Python 3.6, tetapi yang disarankan hanya versi baru. Versi yang sudah diuji: **3.10 dan 3.12** (tes GUI otomatis di Linux) dan **3.8** (hanya tes logika, GUI-nya tidak bisa diuji). Gunakan 3.10 atau lebih baru.
+- **tkinter harus ikut terpasang.** Installer dari python.org menyertakannya secara bawaan (opsi "tcl/tk and IDLE"). Cek dengan:
+  ```
+  python -c "import tkinter; print('tkinter OK')"
+  ```
+  Kalau muncul `No module named tkinter`, jalankan lagi installer Python, pilih *Modify*, lalu centang **tcl/tk and IDLE**.
+- **Tidak perlu `pip install`** untuk menjalankan dari source: aplikasi hanya memakai library standar Python. PyInstaller hanya dibutuhkan untuk membuat exe, dan `build.bat` memasangnya otomatis.
+- Python dari sumber lain (misalnya Microsoft Store) belum diuji; installer python.org adalah yang disarankan.
+
+## Cara cepat memulai
+
+### Memakai `.exe`
+
+1. Unduh `GitHubReleaseTracker.exe` dari [halaman Releases](https://github.com/santosasarno-code/github-release-tracker/releases).
+2. Taruh di folder mana saja (boleh di flashdisk) lalu jalankan.
+3. Tempel URL GitHub seperti `https://github.com/owner/repo` lalu klik **Add project**.
+4. Nanti, klik **Check for updates**.
+
+> **Windows mungkin memberi peringatan** ("Windows protected your PC") atau antivirus menandai file ini. Ini sering terjadi pada file tunggal buatan PyInstaller, dan aplikasi ini tidak ditandatangani digital. Kalau Anda tidak mau memercayai `.exe` unduhan, baca source-nya (hanya satu file Python) dan buat sendiri dengan langkah di bawah.
+
+### Menjalankan dari source
+
+```
+python github_release_tracker.py
+```
+(atau `py github_release_tracker.py`)
+
+### Membuat `.exe` sendiri
+
+1. Pasang Python (lihat di atas) dan unduh repository ini.
+2. Klik dua kali `build.bat`.
+3. Aplikasi portable Anda muncul di `dist\GitHubReleaseTracker.exe`.
+
+Cara manual:
+```
+pip install pyinstaller
+pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_tracker.py
+```
+
+## Cara kerjanya
+
+- Aplikasi membaca feed release publik tiap proyek, `https://github.com/<owner>/<repo>/releases.atom`. Ini tidak perlu login dan tidak memakai batas permintaan API GitHub.
+- Kalau feed gagal atau proyek tidak punya release, aplikasi beralih ke API GitHub (yang membolehkan sekitar 60 permintaan per jam tanpa token). Kalau proyek sama sekali tidak punya GitHub Release, yang ditampilkan adalah git tag terbaru.
+- Saat Anda menambah proyek, release yang ada saat itu dianggap sudah dilihat. Hanya release yang terbit sesudahnya yang ditandai sebagai update.
+- Deteksi update membandingkan identitas release (dan tag), bukan nomor versi, jadi tag tidak biasa seperti `nightly` atau `build-123` tetap bisa. Efek sampingnya: release yang dihapus lalu dibuat ulang bisa muncul sebagai update.
+- Aplikasi hanya menghubungi `github.com` dan `api.github.com`.
+
+## Data Anda
+
+- Daftar Anda disimpan di `projects.json` **di sebelah file `.exe`**. Kalau folder itu hanya-baca (misalnya `Program Files`), aplikasi memakai `%APPDATA%\GitHubReleaseTracker`.
+- **Export** menulis file `.json` terpisah untuk cadangan atau pindah ke PC lain. **Import** membacanya kembali (dan juga bisa membaca `projects.json` dari build lama).
+- Di Settings ada kolom token GitHub (opsional). Token **tidak diperlukan** untuk pemakaian normal. Kalau Anda mengisinya, token disimpan **sebagai teks biasa** di `projects.json`, jadi jangan bagikan atau unggah file itu. File hasil Export tidak pernah berisi token.
+
+## Keterbatasan
+
+- Hanya Windows (dibuat untuk Windows 10/11).
+- Feed tidak memberi tahu release mana yang pre-release, jadi label `(pre-release)` tidak tampil untuk hasil dari feed. Mode "stable only" (klik kanan proyek, hapus centang *Include pre-releases*) memakai API dan batas permintaannya.
+- Feed adalah halaman publik GitHub, bukan API resmi; GitHub bisa mengubah atau membatasinya.
+- Repository privat tidak didukung tanpa token.
+- Tanggal "Published" berasal dari waktu update di feed, jadi mengedit release di GitHub bisa mengubahnya.
+
+## Pemecahan masalah
+
+| Masalah | Yang dilakukan |
+|---|---|
+| `No module named tkinter` | Pasang ulang Python dari python.org dengan **tcl/tk and IDLE** dicentang. |
+| `python` tidak dikenali | Pasang ulang Python dan centang **Add python.exe to PATH**, atau pakai `py` sebagai pengganti `python`. |
+| "GitHub API rate limit reached" | Batas 60 per jam pada API cadangan tercapai. Tunggu sampai jam yang tertera, atau isi token di **Settings**. |
+| "Not found" saat menambah proyek | Periksa ejaannya. Repository privat tidak didukung tanpa token. |
+| Peringatan Windows SmartScreen / antivirus | Lihat catatan di bagian *Memakai `.exe`*. |
+| Proyek menampilkan "No releases published" | Repository belum punya GitHub Release maupun tag. |
+
+## Lisensi
+
+[MIT](LICENSE). Proyek ini tidak berafiliasi dengan atau didukung oleh GitHub.
