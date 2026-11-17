@@ -18,6 +18,7 @@ Aplikasi Windows portable berukuran kecil untuk memantau release terbaru dari pr
 - Klik header **Project**, **Repository**, **Published**, atau **Status** untuk mengurutkan (klik lagi untuk membalik; panah menunjukkan arahnya)
 - **Import / Export** daftar proyek sebagai file `.json` (gabungkan atau ganti saat import)
 - Tombol mode **terang / gelap** (awalnya mengikuti tema Windows Anda)
+- Menu klik kanan di kotak teks (Cut / Copy / Paste / Select all), dan klik kanan pada status bar untuk menyalin pesannya
 - Portable: satu file `.exe`, tanpa installer, tanpa entri registry
 
 Aplikasi ini hanya membaca informasi release. Ia tidak pernah mengunduh atau memasang apa pun.
@@ -53,6 +54,16 @@ Pilih baris yang sesuai dengan tujuan Anda.
 4. Nanti, klik **Check for updates**.
 
 > **Windows mungkin memberi peringatan** ("Windows protected your PC") atau antivirus menandai file ini. Ini sering terjadi pada file tunggal buatan PyInstaller, dan aplikasi ini tidak ditandatangani digital. Kalau Anda tidak mau memercayai `.exe` unduhan, baca source-nya (hanya satu file Python) dan buat sendiri dengan langkah di bawah.
+
+#### Memeriksa file unduhan Anda
+
+`.exe` di halaman Releases dibuat sendiri oleh pembuatnya di PC pribadinya dari source di repository ini, memakai `build.bat`. File itu **tidak** dibuat oleh layanan independen, jadi tidak ada pihak lain yang bisa memastikan isinya sama dengan source. Hash SHA-256 dari `.exe` tiap release dicantumkan di catatan release tersebut. Untuk memastikan unduhan Anda utuh, buka PowerShell di folder file tersebut lalu jalankan:
+
+```
+Get-FileHash .\GitHubReleaseTracker.exe -Algorithm SHA256
+```
+
+Hash-nya harus sama dengan yang tertulis di catatan release. Ini membuktikan file Anda sama dengan yang dipublikasikan, bukan bahwa file itu aman; yang benar-benar bisa Anda periksa adalah source code-nya, dan Anda bisa membuat `.exe` sendiri dengan langkah di bawah.
 
 ### Menjalankan dari source
 

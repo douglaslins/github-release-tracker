@@ -703,7 +703,9 @@ class App(tk.Tk):
         self.menu.add_command(label="Remove", command=self.remove_selected)
 
         self.status = tk.StringVar(value="Add a project to get started.")
-        ttk.Label(self, textvariable=self.status, anchor="w", padding=(10, 6)).pack(fill="x")
+        self.status_label = ttk.Label(self, textvariable=self.status, anchor="w", padding=(10, 6))
+        self.status_label.pack(fill="x")
+        self._build_text_menus()
 
     # ---- theme -----------------------------------------------------------
     def apply_theme(self):
@@ -740,8 +742,9 @@ class App(tk.Tk):
         self.tree.tag_configure("update", background=c["update_bg"], foreground=c["update_fg"])
         self.tree.tag_configure("error", foreground=c["error_fg"])
         self.tree.tag_configure("none", foreground=c["none_fg"])
-        self.menu.configure(bg=c["field"], fg=c["fg"], activebackground=c["sel_bg"],
-                            activeforeground=c["sel_fg"], bd=0)
+        for mnu in (self.menu, self.edit_menu, self.status_menu):
+            mnu.configure(bg=c["field"], fg=c["fg"], activebackground=c["sel_bg"],
+                          activeforeground=c["sel_fg"], disabledforeground=c["none_fg"], bd=0)
         self.btn_theme.configure(text="Light mode" if self.theme_name == "dark" else "Dark mode")
         self.arrow_up = self._triangle(True, c["fg"])      # sort arrows follow the theme color
         self.arrow_down = self._triangle(False, c["fg"])
@@ -756,6 +759,73 @@ class App(tk.Tk):
         self.set_status("%s mode." % self.theme_name.capitalize())
 
     # ---- helpers ---------------------------------------------------------
+    # ---- right-click menus for text (Cut / Copy / Paste / Select all) -------
+    def _build_text_menus(self):
+        em = self.edit_menu = tk.Menu(self, tearoff=0)
+        em.add_command(label="Cut", accelerator="Ctrl+X", command=lambda: self._edit("<<Cut>>"))
+        em.add_command(label="Copy", accelerator="Ctrl+C", command=lambda: self._edit("<<Copy>>"))
+        em.add_command(label="Paste", accelerator="Ctrl+V", command=lambda: self._edit("<<Paste>>"))
+        em.add_separator()
+        em.add_command(label="Select all", accelerator="Ctrl+A", command=lambda: self._select_all(self._edit_target))
+        self._edit_target = None
+        self.status_menu = tk.Menu(self, tearoff=0)
+        self.status_menu.add_command(label="Copy", command=self.copy_status)
+        self.attach_edit_menu(self.entry)
+        self.status_label.bind("<Button-3>", self._show_status_menu)
+
+    def attach_edit_menu(self, entry, masked=False):
+        """Right-click menu + Ctrl+A for a text box. masked=True (token box): no Cut/Copy."""
+        entry.bind("<Button-3>", lambda e, m=masked: self._show_edit_menu(e, m))
+        entry.bind("<Control-a>", lambda e: self._select_all(e.widget))
+        entry.bind("<Control-A>", lambda e: self._select_all(e.widget))
+
+    @staticmethod
+    def _select_all(w):
+        if w is not None:
+            w.selection_range(0, "end")
+            w.icursor("end")
+        return "break"  # stop Tk's own Ctrl+A (jump to line start on some platforms)
+
+    def _edit(self, virtual_event):
+        w = self._edit_target
+        if w is not None:
+            w.focus_set()
+            w.event_generate(virtual_event)  # use the text box's own, native Cut/Copy/Paste
+
+    def _show_edit_menu(self, event, masked=False):
+        w = event.widget
+        state = str(w.cget("state"))
+        if state == "disabled":
+            return
+        w.focus_set()
+        try:
+            has_clip = bool(self.clipboard_get())
+        except tk.TclError:  # clipboard empty or holds something that is not text
+            has_clip = False
+        has_sel = bool(w.selection_present())
+        editable = state == "normal"
+        em = self.edit_menu
+        em.entryconfigure("Cut", state="normal" if (has_sel and editable and not masked) else "disabled")
+        em.entryconfigure("Copy", state="normal" if (has_sel and not masked) else "disabled")
+        em.entryconfigure("Paste", state="normal" if (has_clip and editable) else "disabled")
+        em.entryconfigure("Select all", state="normal" if w.get() else "disabled")
+        self._edit_target = w
+        try:
+            em.tk_popup(event.x_root, event.y_root)
+        finally:
+            em.grab_release()
+
+    def _show_status_menu(self, event):
+        self.status_menu.entryconfigure("Copy", state="normal" if self.status.get() else "disabled")
+        try:
+            self.status_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.status_menu.grab_release()
+
+    def copy_status(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.status.get())
+
     def token(self):
         return (self.data["settings"].get("token") or "").strip()
 
@@ -1130,6 +1200,7 @@ class App(tk.Tk):
         tok = tk.StringVar(value=self.data["settings"].get("token", ""))
         ent = ttk.Entry(body, textvariable=tok, show="*", width=52)
         ent.grid(row=1, column=0, sticky="we", pady=(2, 2))
+        self.attach_edit_menu(ent, masked=True)  # hidden token: Paste yes, Cut/Copy no
         ttk.Label(body, style="Sub.TLabel", wraplength=420, justify="left",
                   text="Not needed for normal use: releases are read from GitHub's public feed. "
                        "A token only helps if the feed is blocked or for stable-only mode. "

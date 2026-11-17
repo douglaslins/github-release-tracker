@@ -18,6 +18,7 @@ A small, portable Windows app that tracks the latest release of the GitHub proje
 - Click the **Project**, **Repository**, **Published** or **Status** header to sort (click again to reverse; an arrow shows the direction)
 - **Import / Export** your project list as a `.json` file (merge or replace on import)
 - **Light / dark** mode toggle (starts with your Windows theme)
+- Right-click menu in the text boxes (Cut / Copy / Paste / Select all), and right-click the status bar to copy its message
 - Portable: one `.exe`, no installer, no registry entries
 
 The app only reads release information. It never downloads or installs anything.
@@ -53,6 +54,16 @@ Pick the row that matches what you want to do.
 4. Later, click **Check for updates**.
 
 > **Windows may warn you** ("Windows protected your PC") or antivirus may flag the file. This happens often with single-file executables made by PyInstaller and the app is not code-signed. If you do not want to trust a downloaded `.exe`, read the source (it is one Python file) and build it yourself with the steps below.
+
+#### Verify your download
+
+The `.exe` on the Releases page is built by the author on their own PC from the source in this repository, using `build.bat`. It is **not** built by an independent service, so nobody but the author can confirm it matches the source. The SHA-256 hash of each release's `.exe` is listed in that release's notes. To check that your download is intact, open PowerShell in the folder with the file and run:
+
+```
+Get-FileHash .\GitHubReleaseTracker.exe -Algorithm SHA256
+```
+
+The hash must match the one in the release notes. This proves the file is the one that was published, not that it is safe; the source code is what you can actually inspect, and you can build the `.exe` yourself with the steps below.
 
 ### Run from source
 
