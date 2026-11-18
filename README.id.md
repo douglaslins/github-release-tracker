@@ -20,7 +20,7 @@ Aplikasi Windows portable berukuran kecil untuk memantau release terbaru dari pr
 - **Import / Export** daftar proyek sebagai file `.json` (gabungkan atau ganti saat import)
 - Mode **terang / gelap**: klik tombol bulan / matahari (awalnya mengikuti tema Windows Anda)
 - Semua kolom ikut melebar atau menyempit secara proporsional saat jendela diubah ukurannya (seret batas kolom untuk mengubah proporsinya)
-- Ikon kecil pada tombol, garis pemisah tipis antar baris, dan ikon aplikasi sendiri
+- Ikon kecil pada tombol, garis pemisah tipis antar baris dan kolom, dan ikon aplikasi sendiri
 - Nomor versi di judul jendela; **Settings > About** juga menampilkannya
 - Menu klik kanan di kotak teks (Cut / Copy / Paste / Select all), dan klik kanan pada status bar untuk menyalin pesannya
 - Portable: satu file `.exe`, tanpa installer, tanpa entri registry
@@ -61,13 +61,15 @@ Pilih baris yang sesuai dengan tujuan Anda.
 
 #### Memeriksa file unduhan Anda
 
-`.exe` di halaman Releases dibuat sendiri oleh pembuatnya di PC pribadinya dari source di repository ini, memakai `build.bat`. File itu **tidak** dibuat oleh layanan independen, jadi tidak ada pihak lain yang bisa memastikan isinya sama dengan source. Hash SHA-256 dari `.exe` tiap release dicantumkan di catatan release tersebut. Untuk memastikan unduhan Anda utuh, buka PowerShell di folder file tersebut lalu jalankan:
+Mulai v1.1.0, `.exe` di halaman Releases dibuat oleh **workflow GitHub Actions** "Build Windows exe" di mesin Windows milik GitHub, dari source di repository ini. Catatan release memuat tautan ke log build publik dari run yang sama, jadi Anda bisa melihat bagaimana file itu dibuat. (v1.0.0 dan v1.0.1 dibuat oleh pembuatnya di PC pribadinya dengan `build.bat`.) Pembuatnya tetap mengunduh hasilnya lalu melampirkannya ke Release secara manual.
+
+Hash SHA-256 dari `.exe` tiap release dicantumkan di catatan release tersebut. Untuk memastikan unduhan Anda utuh, buka PowerShell di folder file tersebut lalu jalankan:
 
 ```
 Get-FileHash .\GitHubReleaseTracker.exe -Algorithm SHA256
 ```
 
-Hash-nya harus sama dengan yang tertulis di catatan release. Ini membuktikan file Anda sama dengan yang dipublikasikan, bukan bahwa file itu aman; yang benar-benar bisa Anda periksa adalah source code-nya, dan Anda bisa membuat `.exe` sendiri dengan langkah di bawah.
+Hash-nya harus sama dengan yang tertulis di catatan release. Ini membuktikan file Anda sama dengan yang dipublikasikan, bukan bahwa file itu aman; yang benar-benar bisa Anda periksa adalah source code-nya. Kalau Anda membuat `.exe` sendiri, hash-nya akan berbeda: build di mesin yang berbeda tidak identik byte demi byte.
 
 ### Menjalankan dari source
 
@@ -113,7 +115,7 @@ pyinstaller --onefile --windowed --icon icon.ico --name GitHubReleaseTracker git
 - Repository privat tidak didukung tanpa token.
 - Tanggal "Published" berasal dari waktu update di feed, jadi mengedit release di GitHub bisa mengubahnya.
 - Deskripsi proyek (tampil di status bar saat dipilih) dibaca sekali ketika proyek ditambahkan dan tidak diperbarui lagi. Kalau API GitHub sedang tidak tersedia saat itu, proyek menampilkan "No description, website, or topics provided." walaupun repository-nya sebenarnya punya deskripsi.
-- Garis antar baris dan pensil rename adalah widget kecil yang digambar di atas daftar. Klik tepat pada garis setebal 1 piksel diteruskan ke barisnya, tetapi *klik dua kali* tepat di garis itu bisa gagal membuka halaman release.
+- Garis antar baris dan kolom serta pensil rename adalah widget kecil yang digambar di atas daftar. Klik tepat pada garis setebal 1 piksel diteruskan ke barisnya, tetapi *klik dua kali* tepat di garis itu bisa gagal membuka halaman release.
 - Ikon berukuran 16 px (24 px pada layar dengan skala 150% atau lebih). Tidak semua pengaturan layar Windows sudah diuji.
 
 ## File di repository ini

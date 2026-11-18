@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.1]
+- Thin separator lines between columns, in the same colour as the row lines.
+- Column headers are left-aligned and bold.
+- The horizontal scrollbar only appears when the columns do not fit; the vertical one stays visible.
+- Fix: making a column narrower no longer leaves an empty strip on the right; the last column takes the freed space.
+
 ## [1.1.0]
 - Release-tag app icon (window, taskbar and the `.exe` file).
 - Version number in the window title, and an About box (Settings > About) with a Copy version button.
@@ -10,6 +16,7 @@
 - Fix: a project with an empty About box on GitHub no longer shows another project's description; it shows "No description, website, or topics provided."
 - Fix: status messages such as "Renamed to ..." or "Marked 1 project(s) as seen." are no longer replaced right away by the project description.
 - `build.bat` now checks Python and tkinter, reads the version, adds the icon and writes ready-to-paste release notes with the SHA-256.
+- The GitHub Actions workflow (manual run) now also writes the release notes, with the SHA-256 and a link to the public build log. It never touches a Release by itself.
 
 ## [1.0.1]
 - Right-click menus in text boxes (Cut / Copy / Paste / Select all) and on the status bar (Copy).

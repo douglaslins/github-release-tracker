@@ -20,7 +20,7 @@ A small, portable Windows app that tracks the latest release of the GitHub proje
 - **Import / Export** your project list as a `.json` file (merge or replace on import)
 - **Light / dark** mode: click the moon / sun button (starts with your Windows theme)
 - Columns resize in proportion when you stretch or shrink the window (drag a column border to change the proportions)
-- Small icons on the buttons, thin separator lines between rows, and the app's own icon
+- Small icons on the buttons, thin separator lines between rows and columns, and the app's own icon
 - Version number in the window title; **Settings > About** shows it too
 - Right-click menu in the text boxes (Cut / Copy / Paste / Select all), and right-click the status bar to copy its message
 - Portable: one `.exe`, no installer, no registry entries
@@ -61,13 +61,15 @@ Pick the row that matches what you want to do.
 
 #### Verify your download
 
-The `.exe` on the Releases page is built by the author on their own PC from the source in this repository, using `build.bat`. It is **not** built by an independent service, so nobody but the author can confirm it matches the source. The SHA-256 hash of each release's `.exe` is listed in that release's notes. To check that your download is intact, open PowerShell in the folder with the file and run:
+From v1.1.0 on, the `.exe` on the Releases page is built by the **GitHub Actions workflow** "Build Windows exe" on a GitHub-hosted Windows machine, from the source in this repository. The release notes link to the public build log of that exact run, so you can see how the file was made. (v1.0.0 and v1.0.1 were built by the author on their own PC with `build.bat`.) The author still downloads the result and attaches it to the Release by hand.
+
+The SHA-256 hash of each release's `.exe` is listed in that release's notes. To check that your download is intact, open PowerShell in the folder with the file and run:
 
 ```
 Get-FileHash .\GitHubReleaseTracker.exe -Algorithm SHA256
 ```
 
-The hash must match the one in the release notes. This proves the file is the one that was published, not that it is safe; the source code is what you can actually inspect, and you can build the `.exe` yourself with the steps below.
+The hash must match the one in the release notes. This proves the file is the one that was published, not that it is safe; the source code is what you can actually inspect. If you build the `.exe` yourself the hash will differ: builds on different machines are not identical byte for byte.
 
 ### Run from source
 
@@ -113,7 +115,7 @@ pyinstaller --onefile --windowed --icon icon.ico --name GitHubReleaseTracker git
 - Private repositories are not supported without a token.
 - The "Published" date comes from the feed's updated time, so editing a release on GitHub can change it.
 - A project's description (shown in the status bar when you select it) is read once, when the project is added, and is not refreshed later. If the GitHub API was unavailable at that moment, the project shows "No description, website, or topics provided." even if the repository has one.
-- The row lines and the rename pencil are small widgets drawn over the list. A click exactly on a 1-pixel line is passed on to the row, but a *double*-click exactly on that line may not open the release page.
+- The row and column lines and the rename pencil are small widgets drawn over the list. A click exactly on a 1-pixel line is passed on to the row, but a *double*-click exactly on that line may not open the release page.
 - Icons are 16 px (24 px on screens scaled to 150% or more). Not every Windows display setup has been tested.
 
 ## Files in this repository

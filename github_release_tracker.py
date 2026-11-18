@@ -50,8 +50,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GitHub Release Tracker"
-# Keep in step with the release tag: tag v1.1.0 <-> APP_VERSION "1.1.0" (build.bat checks the format).
-APP_VERSION = "1.1.0"
+# Keep in step with the release tag: tag v1.1.1 <-> APP_VERSION "1.1.1" (build.bat checks the format).
+APP_VERSION = "1.1.1"
 APP_ID = "santosasarno-code.GitHubReleaseTracker"  # Windows taskbar identity (so the taskbar shows our icon)
 REPO_URL = "https://github.com/santosasarno-code/github-release-tracker"
 NO_DESCRIPTION = "No description, website, or topics provided."  # same wording GitHub shows for an empty About box
@@ -889,6 +889,9 @@ class App(tk.Tk):
         self._col_base, self._col_min = {}, {}   # preferred / minimum column widths (see _layout_columns)
         self._tree_w, self._col_drag = 0, False
         self._lines, self._lines_job = [], None
+        self._vlines, self._head_h = [], None   # column lines; measured height of the header row
+        self._hsb_shown = False
+        self._xorg = 2
         self.data = load_data()
         self.theme_name = self.data["settings"].get("theme") or system_theme()
         self.sort_col = self.data["settings"].get("sort_col") or ""
@@ -962,9 +965,9 @@ class App(tk.Tk):
         self.head_text = {cid: text for cid, text, _w, _mw in heads}
         for cid, text, w, mw in heads:
             if cid in SORTABLE:  # Current release / Last checked: not clickable
-                self.tree.heading(cid, text=text, command=lambda c=cid: self.sort_by(c))
+                self.tree.heading(cid, text=text, anchor="w", command=lambda c=cid: self.sort_by(c))
             else:
-                self.tree.heading(cid, text=text)
+                self.tree.heading(cid, text=text, anchor="w")
             # No Tk "stretch": _layout_columns() resizes every column in proportion to the window.
             self.tree.column(cid, width=w, minwidth=mw, stretch=False)
             self._col_base[cid], self._col_min[cid] = w, mw
@@ -973,12 +976,13 @@ class App(tk.Tk):
         # list took the full width of its columns and pushed the scrollbar out of view.
         self.vsb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         self.hsb = ttk.Scrollbar(frame, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=self._on_yscroll, xscrollcommand=self.hsb.set)
+        self.tree.configure(yscrollcommand=self._on_yscroll, xscrollcommand=self._on_xscroll)
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.vsb.grid(row=0, column=1, sticky="ns")
         self.hsb.grid(row=1, column=0, sticky="ew")
+        self.hsb.grid_remove()   # shown only when the columns do not fit (see _on_xscroll)
         self.tree.bind("<Double-1>", self._on_double_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         self.tree.bind("<Button-3>", self._popup)
@@ -989,6 +993,7 @@ class App(tk.Tk):
         self.tree.bind("<Configure>", self._layout_columns, add="+")
         self.tree.bind("<ButtonPress-1>", self._col_press, add="+")
         self.tree.bind("<ButtonRelease-1>", self._col_release, add="+")
+        self.tree.bind("<B1-Motion>", lambda e: self._schedule_lines() if self._col_drag else None, add="+")
         self.tree.bind("<Motion>", self._on_motion, add="+")
         self.tree.bind("<Leave>", self._on_leave, add="+")
         self.tree.bind("<MouseWheel>", lambda e: self._hide_pencil(), add="+")
@@ -1043,7 +1048,7 @@ class App(tk.Tk):
         s.map("Treeview", background=[("selected", c["sel_bg"])], foreground=[("selected", c["sel_fg"])])
         s.configure("Treeview.Heading", background=c["head_bg"], foreground=c["fg"], relief="flat",
                     bordercolor=c["border"], lightcolor=c["head_bg"], darkcolor=c["head_bg"],
-                    padding=(6, 4))
+                    padding=(3, 4), font=self._head_font())
         s.map("Treeview.Heading", background=[("active", c["btn_active"])])
         for name in ("TScrollbar", "Vertical.TScrollbar"):
             s.configure(name, background=c["btn_bg"], troughcolor=c["bg"], arrowcolor=c["fg"],
@@ -1061,6 +1066,7 @@ class App(tk.Tk):
         self.update_headings()
         self._pencil_imgs = {}
         self._hide_pencil()
+        self._head_h = None   # re-measure the header row (its height can depend on the theme)
         self._schedule_lines()
         set_titlebar_dark(self, self.theme_name == "dark")
 
@@ -1093,6 +1099,15 @@ class App(tk.Tk):
             btn.configure(image=(normal, "disabled", grey), compound="image" if icon_only else "left")
 
     # ---- column widths ---------------------------------------------------
+    def _head_font(self):
+        """The list's normal font, in bold, for the column headers."""
+        if getattr(self, "_head_font_obj", None) is None:
+            import tkinter.font as tkfont
+            f = tkfont.nametofont("TkDefaultFont", root=self).copy()
+            f.configure(weight="bold")
+            self._head_font_obj = f
+        return self._head_font_obj
+
     def _layout_columns(self, _event=None):
         """Size the columns to the window, in proportion to their preferred widths.
 
@@ -1121,6 +1136,7 @@ class App(tk.Tk):
             sizes[ids.index("status")] += max(0, avail - sum(sizes))
         for cid, w in zip(ids, sizes):
             self.tree.column(cid, width=w)
+        self._schedule_lines()
 
     def _col_press(self, event):
         self._col_drag = self.tree.identify_region(event.x, event.y) == "separator"
@@ -1128,9 +1144,26 @@ class App(tk.Tk):
     def _col_release(self, _event):
         if self._col_drag:  # the user resized a column: that is the new preferred layout
             self._col_drag = False
+            ids = list(self._col_base)
+            slack = self.tree.winfo_width() - 4 - sum(int(self.tree.column(c, "width")) for c in ids)
+            if slack > 0:       # a column was made narrower: the last column takes the freed space, no empty strip
+                last = ids[-1]
+                self.tree.column(last, width=int(self.tree.column(last, "width")) + slack)
             self._col_base = {c: int(self.tree.column(c, "width")) for c in self._col_base}
+            self._schedule_lines()
 
-    # ---- row separators (thin lines between rows) ------------------------
+    # ---- row and column separators (thin lines) ---------------------------
+    def _on_xscroll(self, first, last):
+        self.hsb.set(first, last)
+        needed = (float(last) - float(first)) < 0.998     # less than ~2 px hidden does not count
+        if needed != self._hsb_shown:
+            self._hsb_shown = needed
+            if needed:
+                self.hsb.grid()
+            else:
+                self.hsb.grid_remove()
+        self._schedule_lines()
+
     def _on_yscroll(self, first, last):
         self.vsb.set(first, last)
         self._schedule_lines()
@@ -1164,11 +1197,57 @@ class App(tk.Tk):
                 f.lift()
             else:
                 f.place_forget()
+        self._redraw_vlines()
 
-    def _forward(self, event, sequence):
+    def _header_height(self):
+        """Pixel height of the header row (measured once; the column lines start below it)."""
+        if self._head_h is None:
+            tree = self.tree
+            x, y = max(3, tree.winfo_width() // 2), 3
+            while y < 80 and tree.identify_region(x, y) in ("heading", "separator"):
+                y += 1
+            self._head_h = y if 3 < y < 80 else None
+        return self._head_h
+
+    def _redraw_vlines(self):
+        tree = self.tree
+        hh = self._header_height()
+        cols = list(tree["columns"])
+        widths = [int(tree.column(c, "width")) for c in cols]
+        off = int(round(tree.xview()[0] * sum(widths)))      # how far the list is scrolled sideways
+        # where the first column really starts inside the widget (border width differs per theme/OS)
+        for iid in tree.get_children():
+            b = tree.bbox(iid, cols[0])
+            if b:
+                self._xorg = b[0] + off
+                break
+        edges, cum = [], 0
+        for w in widths[:-1]:
+            cum += w
+            edges.append(cum - 1 - off + self._xorg)
+        while len(self._vlines) < len(edges):
+            f = tk.Frame(tree, width=1, bd=0, highlightthickness=0)
+            f.bind("<Button-1>", lambda e: self._forward(e, "<Button-1>", True))
+            f.bind("<ButtonRelease-1>", lambda e: self._forward(e, "<ButtonRelease-1>", True))
+            f.bind("<Button-3>", lambda e: self._forward(e, "<Button-3>", True))
+            f.bind("<MouseWheel>", self._forward_wheel)
+            self._vlines.append(f)
+        color = THEMES[self.theme_name]["line"]
+        visible_w = tree.winfo_width() - 2
+        for f, x in zip(self._vlines, edges):
+            if hh and 0 <= x < visible_w:
+                f.configure(bg=color)
+                f.place(x=x, y=hh, width=1, relheight=1.0, height=-hh)
+                f.lift()
+            else:
+                f.place_forget()
+
+    def _forward(self, event, sequence, vertical=False):
+        """Pass a click that landed on a 1 px line on to the list underneath."""
+        w = event.widget
+        x, y = (w.winfo_x() - 1, event.y + w.winfo_y()) if vertical else (event.x, w.winfo_y() - 1)
         try:
-            self.tree.event_generate(sequence, x=event.x, y=event.widget.winfo_y() - 1,
-                                     rootx=event.x_root, rooty=event.y_root)
+            self.tree.event_generate(sequence, x=x, y=y, rootx=event.x_root, rooty=event.y_root)
         except tk.TclError:
             pass
 
