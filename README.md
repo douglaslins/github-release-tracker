@@ -15,9 +15,13 @@ A small, portable Windows app that tracks the latest release of the GitHub proje
 - **Check for updates** refreshes every project; a project with a newer release is highlighted as `Update available: v1.0 -> v1.1`
 - **Mark as seen** clears the highlight once you have dealt with an update
 - Double-click a project to open its release page in your browser
+- **Rename a project** to something readable: hover a row and click the pencil (or press **F2**, or right-click > Rename). *Reset name* brings the GitHub name back. Your names are saved and included in Export
 - Click the **Project**, **Repository**, **Published** or **Status** header to sort (click again to reverse; an arrow shows the direction)
 - **Import / Export** your project list as a `.json` file (merge or replace on import)
-- **Light / dark** mode toggle (starts with your Windows theme)
+- **Light / dark** mode: click the moon / sun button (starts with your Windows theme)
+- Columns resize in proportion when you stretch or shrink the window (drag a column border to change the proportions)
+- Small icons on the buttons, thin separator lines between rows, and the app's own icon
+- Version number in the window title; **Settings > About** shows it too
 - Right-click menu in the text boxes (Cut / Copy / Paste / Select all), and right-click the status bar to copy its message
 - Portable: one `.exe`, no installer, no registry entries
 
@@ -81,8 +85,10 @@ python github_release_tracker.py
 Manual alternative:
 ```
 pip install pyinstaller
-pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_tracker.py
+pyinstaller --onefile --windowed --icon icon.ico --name GitHubReleaseTracker github_release_tracker.py
 ```
+
+`build.bat` also checks Python and tkinter, adds the icon, and writes a ready-to-paste release notes file with the SHA-256 (`dist\release-notes-vX.Y.Z.md`). Maintainers: see [RELEASING.md](RELEASING.md) for the full release checklist and [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## How it works
 
@@ -96,6 +102,7 @@ pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_trac
 
 - Your list is saved in `projects.json` **next to the `.exe`**. If that folder is read-only (for example `Program Files`), it uses `%APPDATA%\GitHubReleaseTracker` instead.
 - **Export** writes a separate `.json` file for backup or moving to another PC. **Import** reads it back (and also reads the `projects.json` of older builds).
+- **Custom names travel with the file.** If you rename a project and share your Export, the other person's **Import** shows your names for projects they do not have yet. For a project they already have, **Merge** keeps their entry and name unchanged (your name is not applied); **Replace** swaps their whole list for the file, names included. Files exported by v1.1.0 still import in older versions, but the custom names are dropped.
 - Settings has an optional GitHub token. It is **not needed** for normal use. If you add one, it is stored **in plain text** in `projects.json`, so do not share or upload that file. Exported files never contain the token.
 
 ## Known limitations
@@ -105,6 +112,19 @@ pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_trac
 - The feed is a public GitHub page, not an official API; GitHub could change or throttle it.
 - Private repositories are not supported without a token.
 - The "Published" date comes from the feed's updated time, so editing a release on GitHub can change it.
+- A project's description (shown in the status bar when you select it) is read once, when the project is added, and is not refreshed later. If the GitHub API was unavailable at that moment, the project shows "No description, website, or topics provided." even if the repository has one.
+- The row lines and the rename pencil are small widgets drawn over the list. A click exactly on a 1-pixel line is passed on to the row, but a *double*-click exactly on that line may not open the release page.
+- Icons are 16 px (24 px on screens scaled to 150% or more). Not every Windows display setup has been tested.
+
+## Files in this repository
+
+| File | What it is |
+|---|---|
+| `github_release_tracker.py` | The whole app (one Python file, standard library only). |
+| `build.bat` | Builds `dist\GitHubReleaseTracker.exe`. |
+| `icon.ico` | The app icon used by the build. |
+| `tools/` | Maintainer helpers: `release_info.py` (used by `build.bat`) and `make_icons.py` (regenerates the icons; needs Pillow, not needed to use or build the app). |
+| `CHANGELOG.md`, `RELEASING.md` | What changed, and how to publish a release. |
 
 ## Troubleshooting
 

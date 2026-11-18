@@ -16,7 +16,9 @@ How it works
 - "Mark as seen" acknowledges the current release (clears the highlight).
 - The app never downloads or installs anything; it opens the release page.
 - "Import" / "Export" read and write a .json file (merge or replace on import).
-- "Dark mode" / "Light mode" toggles the theme; the choice is remembered.
+- The moon / sun button toggles the dark / light theme; the choice is remembered.
+- Hover a row and click the pencil (or press F2, or right-click > Rename) to give a
+  project your own display name. Reset name brings the GitHub name back.
 
 Portable: no installer, no registry writes. Data lives in projects.json next to
 the .exe (or this script). Only if that folder is read-only does the app fall
@@ -24,14 +26,16 @@ back to %APPDATA%\\GitHubReleaseTracker.
 
 Build the single-file portable .exe on Windows: double-click build.bat, or run
     pip install pyinstaller
-    pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_tracker.py
+    pyinstaller --onefile --windowed --icon icon.ico --name GitHubReleaseTracker github_release_tracker.py
 The exe appears in the dist folder.
 """
 
+import base64
 import json
 import os
 import queue
 import re
+import struct
 import sys
 import threading
 import urllib.error
@@ -39,15 +43,200 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import webbrowser
+import zlib
 from datetime import datetime
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GitHub Release Tracker"
+# Keep in step with the release tag: tag v1.1.0 <-> APP_VERSION "1.1.0" (build.bat checks the format).
+APP_VERSION = "1.1.0"
+APP_ID = "santosasarno-code.GitHubReleaseTracker"  # Windows taskbar identity (so the taskbar shows our icon)
+REPO_URL = "https://github.com/santosasarno-code/github-release-tracker"
+NO_DESCRIPTION = "No description, website, or topics provided."  # same wording GitHub shows for an empty About box
 API = "https://api.github.com"
 MAX_PROJECTS = 500
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
+MAX_CUSTOM_NAME = 80
+
+# --- BEGIN GENERATED ICON DATA (tools/make_icons.py) ---
+# Toolbar icons: zlib-compressed 8-bit alpha masks, base64. Window icon: 64 px PNG, base64.
+ICON_MASKS = {
+    "refresh": {
+        16: (
+            "eNpjYAADRkYGRgY4YGZiYGBhNBSBigF5PLwMDA/CGJkh3MDd7z9um/1/MQMzmNvy///Tp/+BQBbIYWbw+//Uk4194eEZeZJA"
+            "Y5kYDvx3AxrEBbWIgefTUyaQBczsrIwIPiML1G6YegaHdCGgdrh5ni//e6Da1wByGMw973cHwn0Aci8PA1QW5h8mZgYkwAhT"
+            "CwBdBy28"
+        ),
+        24: (
+            "eNpjYEADTAxYASOGOhYgYGRiyJdDlmNkhsoq/YtkZEE2VC68ujpcnmHt/7UMzAhhiTmf/gPBp21//32RgNnNxKD/8D8U/P7x"
+            "P5sBYhATk9iT//+/LUxPn/cNJLWLEaKemWHe/7+3dIEs3osHp2TayjBCTZH5/u+rJgMbC4uAAJLDWRgi//9fyMAK8wUzI0y8"
+            "5t//FIijGZH8hCwOFGZhxGIOE0oAwu1lY9A+VyjJCNWBcCeD7s3//ydBvYXkr4VAfz2QZGRiwAyHh/pIliDCbY4Emt2QcJZD"
+            "j0dYvDBjj0cckU4EAAARF2gZ"
+        ),
+    },
+    "eye": {
+        16: (
+            "eNpjYCAIGJlZWJhBmBHMZUbIgJhMDAwm+TPXrp2ZbwLiMDEEXPwPBRcDgNz0/x973Xf9/r3Lvffj/3QGga9X+Bk0/wGBJgP/"
+            "la8C6Hx09RjmodmH4R4M9+IHADTyQCU="
+        ),
+        24: (
+            "eNpjYKALYGRmAQNmRmRBFiYEh4kFJsUMxBIOaQ39/Q1pDhJQARDJmbz9zX8oeLM9mRMswczgdx0k8PPH798/foJY1/2AgswM"
+            "mUDm1amRTT///v3ZFDn1KpCbCRTW/f//URgbA+uT/3///n/CysAW9uj/f10GhpZ/v8wZWFmi///+D0TRLKwM5r/+teAWx2EO"
+            "TntxuBOnv3CGA85wwxnOtAQAc0yQHQ=="
+        ),
+    },
+    "ext": {
+        16: (
+            "eNpjYAADZhYWFmZmJgbsgJEppX/SwtU7pzMwgvlMjBZf/wPBSQaoDiYG+Us/vv7ZyMAM5TNyHPr//99KKJ+Jge/w/yPX/s9k"
+            "YIFyD/4/xC73Zh6YD+Ye5GNgMM0CqYdxmSB2MTLwQLgMYBFGJu5T/w/wMcCdysQ2/TgvA4rLWVG5jFBXIwkgAAAhdSkw"
+        ),
+        24: (
+            "eNql0TEOAUEUBuD/zUyiQSIKewKNS6gUGqVCp1GJYnUaCRGJSusMTqGgoNdLHEHYzK5nsLtmrWQLf/lN3p83eUBWSEqpXhHI"
+            "DqFSr7c6PXe8WPXxmSDh7DnMGsoeyG/Y01pf9dJ2M1vccsCseZ5wSOROd9/4KOGkMPF8DjQPEv0KM1Nz5ht3LX/xlSflHQdt"
+            "U5nkGVDccCP2mKVE4dCMPGZFZt2SYz7zzQjtvbjF5oGij05tjqIw5EuaIah25GmKnz1VF5LSNxHA79MJiX/zALwVXIU="
+        ),
+    },
+    "trash": {
+        16: (
+            "eNpjYEAHjIyMLEl5eUksQAZM7MP//x+gsgzrb9++/x8I7t++vR6omGHq9lVrFi1cuGjNqu1TgdJAPUYGpsbGpgZGINUMTMxa"
+            "/6FAi5kJJMT7q3dnXNzO3l+8IHmgjg8t+1xc9rV8AGsG4mur9gQF7Vl1DcxlYGbYfXBHVNSOg7uBTCBgYZh783Bc3OGbc4FM"
+            "ML/q5cr4+JUvq2D8uP+//wNRHITPyCCXW1hUVJgrx8CI4VkGAJoYSfs="
+        ),
+        24: (
+            "eNpjYIACFjBgIAIwMTOzMHP0L5g/f0E/B5DJzIQs+/E/EHxE8BkZdBwdHB3dn/36+fPXM3dHIEcHKMjAzLDjPxrYARQEooWv"
+            "X71///7jJyD4CGS8er0QJM7AwCPIi2wRryAPjCkSHR0ZGRkRASSio0XgPmI0QTbdhJEF5iKJj78PHT21a+fJY4d+f5QAuQYi"
+            "zv7wv+Kk2wwM5xep/H/IDhMH0qf+O83+z8P0d63r/1NwYaCrNvyPnvCPm+HHotj/GyCOBFvMMPV/WfN/IbZ/U8r/T2VgQYhX"
+            "/p/Y9F+Y/f/kSf8rkcXj/q+p+i/N979nzf84hDgzg8v/Iy3/FYX/Tzvy3wVhPjOD7v9bFd9FWb933fyvixBnYpD4/HXZvvbm"
+            "fau/fJZgYEJEAfsHWCh8QHgLBJoXzJk/B4gWNDMQBZhZoABmKQBjiKEO"
+        ),
+    },
+    "gear": {
+        16: (
+            "eNpdj8sJgEAMRCeuaBFahj14sAjtYM+LrYg1iDVoP4Kfi58x6C2BQB5MkhlAxCErywxOBMDXNVn/ICJDgH8ejzAoRPFIztt5"
+            "bjM5xpFL2uPiV9fRJk6XJt5r3683J4W88TuXAigW7r7JK9WxQ5qi04GVZau39+w/68f6tXlg8r4tR3Hh"
+        ),
+        24: (
+            "eNp1UrsKg0AQnDstUmhrEQIhTT4toJWFH5LCT5H0YqH5H0Xk9Ca3JoQU2WHv2JuBfR4QYPAD8+MZi6zt+zaDNV/BhhPbCwMu"
+            "Nv4QciddBSTjuo4JUHXJLhiTdmR+vTvv3f2ak11qJPLhyYVigt17HkIWG1X0nnSrC0bxqygEMhHyZfMiCem3JUf0Luk4Cd0U"
+            "RSPCdNzJ7Hyq6TaW8ii5Odancwa080iufCAOwCO4HOcWGChJeZOOYnujpOag81ocLa9Wp9aXMgd1bsqc1b2oe1T3/vefvAAF"
+            "YP29"
+        ),
+    },
+    "plus": {
+        16: (
+            "eNpjYAADRkYG3ICJweHMGQcgBQXMDCH//4cAKQiPmY056M+fICDFDFPh+v+/K4ztEBAU0P7/fzuQcgBaxHD1PxxcBdmLykdX"
+            "j2kepn2o7sF0LxYA9y8AO7M2PQ=="
+        ),
+        24: (
+            "eNqlkUEKgDAMBFNFSW/+v38Q/JGSfsB7YV09qaQqOPSwTGnTJiJvtES+EqRL45g6hpvXFVjV8XMps+cNsIsPpAlx95GBnE/0"
+            "u+8vRlWjDhnIA4PqsdtKssXMcgFKZlgsUXJNuDE9e/+eWt36O5/+5fXhpW+VPvtz+T33Dd1rdsE="
+        ),
+    },
+    "moon": {
+        16: (
+            "eNpjYGBgYGZAAUwMrK4ejIwwLjND6PU/lkBRGLf4//9OuB5mBuv/v/+aMyL42////SEDV84g+PH//9/KCL4GkPs/mJEFxpf5"
+            "CeTvZ2CFKmBkvvL3z5//JQwMLCwgIRaGnP8///3538YHlWdi2fP/9+/f/+9Na3QEmcrIyLf6PxjslWcCORqIPeYeOzbbBcwE"
+            "CUC9guQlFkZGFoiLAS5dOMs="
+        ),
+        24: (
+            "eNqFkrFKA0EQhmdm14iCiFdGtBFB0lr5AAm+gLG3t1fwAQQlha02FjbmBbSzMIV1tFKwUvEFEi97N797dxizq5Cfbfab5Z/h"
+            "nyWqxMYy/ZWh/8RMc63jbZIQ++v+M56WJHRiSm6AwXpkxjL/gIFexz0MnSPNsMs2wpvIFNqIulq6gFMMl0POZF+QK9xayIVW"
+            "hlDkaLIJeQOeO5ySDfnqV/n+Y0Ek8J959RQZzqjGwZyX6lAU9kgmMjW0hYJrjoMybx4XrjAqCor7naSKscpnsY+Rllb4vLs9"
+            "mZWfkeo9D51zaQo8brCMZ60dvaPU26EQTy4maXe63U47oSCO3wxMtH3/H4w/TFP0DVsLfUc="
+        ),
+    },
+    "sun": {
+        16: (
+            "eNpNTzEOgzAMvIRkgbBQlX6ACirRBb4VvsMaJiTGDmVh6gP4CywMCEQdQFVPsnWWzvYdAAdAGFDjOMAdtCXEOXoZKfoGArG0"
+            "4nwruEwjyYs5oRUOXQOuAuu0vSAE4JtxMOrgBGY2QrXza/16eNOyrsuk7qa8/M3u8/O+7aJq1zNmub2hzDAan5471qTuGJQL"
+            "1Hp/n8zkJ0rJz5bbLDImq01PNPPOPAJlC+cXjyoIcQT/AgrjNeA="
+        ),
+        24: (
+            "eNp9UTGOwkAMHHsTiERQqICGz6RPBa+JRHEVh3gAz0h/VYAEJN5ARQkPQEoEvt0suRyncN6VbI1mvWMP8E+Qud4yflYNbM5A"
+            "rnVZhwsmBI+zxhuQO+uDD4afJzBpM1dsmnDvKNsJswIU8ySVvcdUdfdzCclwoGgmu/6zGWMU6hQtFpFO0yHYqjFUHqeiIx0T"
+            "fili18mkKMtCMse1bDjdrqsQSWH4hURQFv+4XL6A1b00eHlfgZLTKW7Bkd1un219/CDw3v9rdVKt02gmOxhjOG3mCkc/c/V3"
+            "MqNKHlMouV/NReztJW32tpVjr9obq/nG7BlJXq37sO5wY5lmnB+Bfq1NevURVxn88dG6HS+9V9/b4hviZXUK"
+        ),
+    },
+    "import": {
+        16: (
+            "eNpjYMAKotKZkXiMDI/+swFJBP/8ayQ+IyvL5fdcLExIOs6/gzOZGDyWz3n3c94yTwaQCiZWJuFL/////X9VBMiEmCZ099/f"
+            "R6JgaQarHEZmBuPf/60ZmBlzrBgYev+zMrIxpOQxsDGy/u9lYGj6DLeH6XMTA0PLZw4WVhY2NiDB8bmFgaH2/5fvUPDlfy0D"
+            "g1RFcwsUNFdIYXgUACRUN3w="
+        ),
+        24: (
+            "eNqNkrFKA0EQhv+dHTBNCgvjM1ikExtt9NA3sJLjJAGLBM5AQF/A3sr6UkkgdRKx9iHESnwKyR75ndN4xotIvmZ3P2aW+ZcF"
+            "vnGqgrUR7AwGB/BV73FCXkBX/WEIyV/+iDxf1zvd0GOyrTV11Y5d8rQ6Y/M67d2R973LqybKdE4az1zw0hC31LD1GmbkLLxt"
+            "l+XensVj7z2fz/Owb1vRn9SKM4bAdjmooJtFVqS4IW9t8YiyLsRjyr4dneLhCTa9os8pvMcwdIpu5+qbcMWNnTAs/IipxTSs"
+            "1qhpytGXb/2O2Vr4PIuTuCSJs/zTj7nCGF4QTR4rTCL88wPESwW7BB+g8XgE"
+        ),
+    },
+    "export": {
+        16: (
+            "eNpdjjEOglAMhv+W94QzMHkOFkcXvQm7LCxA4sRNTDyEgyYOxncDZ2MYHtEFUx/4wMQvaZumf/8W6CGA8SPAYunSCCN+tPNJ"
+            "QRQcRM663xrGaifvTvaa6bu8MsdndzLr0UID12Yog9oFmSZ0YuUtCZf7zNslKbtLN3E9pwlQiyamzVYRaamBwk6fsi2AykZK"
+            "q7BPka2AXNqXp5UciLOy8pRZjH8+ijE3KA=="
+        ),
+        24: (
+            "eNptkTFuwkAQRb93Vg4XSJFbpIK0ibkAUqRUjiPTgUTDKbgArVsiLDqDFClSpNTp6dLkCikAWz8DJmB7ebJm7b/r8fMucMLz"
+            "cAlzuBwsJlMtbvxIPjsTgtvfPN909KbW27v+ZlHw56b2DTV554bc8sNDxUr8Vx5JfVMxbGfp4pP8WqRZu2nbIZ8cTfGlS8Zy"
+            "JY7oA/lS9Rdr6rmxUl1/XxTReb3BMAm0CrR/X3ODIBnCCFYc66Pgbr3u6WAx5goimO0G5evl/lsMdrN9PufItqwisq8tO+K8"
+            "zOO6cnzM8ySMwhNRmOSHPKNDBlGt5VuDZXDxpP//TEwDbYI/efZ3zg=="
+        ),
+    },
+    "pencil": {
+        16: (
+            "eNpjYIABRmYGZMDIwMCExGViEDBnYEbicuz94wJXAeTu/P/nWxAjE4L76/f/fIgOCPfP/2yIehg3h4EFzGVihXJZwfYyMh/9"
+            "/xPOZWDk1p3w/xecy8xo89qg7X8mlAu0YMn/b1p2CLeqvp5rw4PkUgVFsCokwIzMAwDpjCz2"
+        ),
+        24: (
+            "eNpjYCAOMOISxirBxMDOwIQpw8wgfKGRgYURQ1j0/P//NUBdmMK//vxvQZUAC//+///H/wwgG0P49//DMkhWMzHwnYYIH+Vj"
+            "QBE+ChdmIluY+wgWYUYGwfNYhBkY2ZlX/f+FIczM0NXOsOT/d3TVjFxP/pczzP9/GEWYgYUh4u/X/50M1cKowcLEcOD//9sd"
+            "XGhRxcxg+39HGFAULdSZGBwtwNLYYo+ZEasoNrUAaF9jPw=="
+        ),
+    },
+}
+APP_ICON_PNG = (
+    "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"
+)
+# --- END GENERATED ICON DATA ---
 
 
 def app_dir():
@@ -375,6 +564,18 @@ def normalize_release(r, owner, repo):
     }
 
 
+def clean_name(value):
+    """A user-chosen display name: one line, single spaces, at most MAX_CUSTOM_NAME characters."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:MAX_CUSTOM_NAME].strip()
+
+
+def display_name(p):
+    """What the Project column shows: the user's own name if set, else the GitHub name."""
+    return p.get("custom_name") or p.get("title") or p["repo"]
+
+
 def normalize_project(raw):
     """Return a clean project dict from untrusted input, or None if unusable."""
     if isinstance(raw, str):
@@ -389,7 +590,7 @@ def normalize_project(raw):
             and NAME_RE.match(owner) and NAME_RE.match(repo)):
         return None
     fmt = raw.get("fmt")
-    return {
+    out = {
         "owner": owner,
         "repo": repo,
         "title": _s(raw.get("title"), 200) or repo,
@@ -403,6 +604,10 @@ def normalize_project(raw):
         "last_checked": _s(raw.get("last_checked"), 40),
         "error": _s(raw.get("error"), 300) or None,
     }
+    custom = clean_name(raw.get("custom_name"))
+    if custom:  # only present when the user renamed the project
+        out["custom_name"] = custom
+    return out
 
 
 def parse_import(raw):
@@ -452,7 +657,7 @@ SORTABLE = ("name", "repo", "published", "status")  # columns whose header can b
 
 
 def _title_key(p):
-    return (p.get("title") or p["repo"]).casefold()
+    return display_name(p).casefold()
 
 
 def status_rank(p):
@@ -561,11 +766,11 @@ THEMES = {
     "light": dict(bg="#f3f3f3", fg="#1b1b1b", field="#ffffff", sel_bg="#0078d4", sel_fg="#ffffff",
                   head_bg="#e5e5e5", btn_bg="#e1e1e1", btn_active="#d0d0d0", border="#bdbdbd",
                   update_bg="#fff3cd", update_fg="#1b1b1b", error_fg="#b00020",
-                  none_fg="#777777", sub_fg="#666666"),
+                  none_fg="#777777", sub_fg="#666666", line="#d4d4d4", tip_bg="#ffffe1", tip_fg="#1b1b1b"),
     "dark": dict(bg="#202124", fg="#e8eaed", field="#2b2d31", sel_bg="#2f6fbf", sel_fg="#ffffff",
                  head_bg="#33363b", btn_bg="#3a3d42", btn_active="#4a4d52", border="#4a4d52",
                  update_bg="#4d4210", update_fg="#ffe9a6", error_fg="#ff8a80",
-                 none_fg="#9aa0a6", sub_fg="#9aa0a6"),
+                 none_fg="#9aa0a6", sub_fg="#9aa0a6", line="#3d4046", tip_bg="#3a3d42", tip_fg="#e8eaed"),
 }
 
 
@@ -596,13 +801,94 @@ def set_titlebar_dark(win, dark):
 
 
 # --------------------------------------------------------------------------
+# Icons (drawn from embedded alpha masks; no image files, no extra packages)
+# --------------------------------------------------------------------------
+def make_png(w, h, rgba):
+    """Encode raw RGBA bytes as a PNG (standard library only)."""
+    raw = b"".join(b"\x00" + rgba[y * w * 4:(y + 1) * w * 4] for y in range(h))
+
+    def chunk(kind, body):
+        crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+def icon_image(master, name, size, color):
+    """A PhotoImage of a toolbar icon in the given color, or None if anything goes wrong
+    (the buttons then simply show their text without an icon)."""
+    try:
+        mask = zlib.decompress(base64.b64decode(ICON_MASKS[name][size]))
+        r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+        rgba = b"".join(bytes((r, g, b, a)) for a in mask)
+        return tk.PhotoImage(master=master, data=base64.b64encode(make_png(size, size, rgba)))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+class Tooltip:
+    """A small hover label for a widget (used on the icon-only theme button)."""
+
+    def __init__(self, widget, text_fn, colors_fn):
+        self.widget, self.text_fn, self.colors_fn = widget, text_fn, colors_fn
+        self.tip, self.job = None, None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _e=None):
+        self._hide()
+        self.job = self.widget.after(500, self._show)
+
+    def _show(self):
+        self.job = None
+        bg, fg = self.colors_fn()
+        tip = self.tip = tk.Toplevel(self.widget)
+        tip.wm_overrideredirect(True)
+        tk.Label(tip, text=self.text_fn(), bg=bg, fg=fg, bd=1, relief="solid", padx=6, pady=2).pack()
+        tip.update_idletasks()
+        x = self.widget.winfo_rootx()
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        x = max(0, min(x, self.widget.winfo_screenwidth() - tip.winfo_reqwidth() - 4))
+        tip.wm_geometry("+%d+%d" % (x, y))
+
+    def _hide(self, _e=None):
+        if self.job:
+            self.widget.after_cancel(self.job)
+            self.job = None
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
+
+
+# --------------------------------------------------------------------------
 # GUI
 # --------------------------------------------------------------------------
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP_NAME)
+        self.title("%s v%s" % (APP_NAME, APP_VERSION))
         self.geometry("1260x560")  # replaced below by a screen-aware size
+        self.app_icon = None
+        try:  # window / taskbar icon (the .exe's own icon comes from build.bat --icon)
+            self.app_icon = tk.PhotoImage(master=self, data=APP_ICON_PNG)
+            self.iconphoto(True, self.app_icon)
+        except Exception:  # noqa: BLE001 - cosmetic only
+            self.app_icon = None
+        # Toolbar icons: 16 px normally, 24 px on high-DPI screens (150% and up).
+        try:
+            self.icon_px = 24 if self.winfo_fpixels("1i") / 96.0 >= 1.4 else 16
+        except tk.TclError:
+            self.icon_px = 16
+        self._btn_icons = []      # (button, icon name) pairs, recolored when the theme changes
+        self._icon_refs = []      # PhotoImages must stay referenced or Tk blanks them
+        self._pencil_imgs = {}
+        self._editor = None       # inline rename box: (entry, row id, project)
+        self._suppress_select = False  # True while render() restores the selection (see _on_select)
+        self._col_base, self._col_min = {}, {}   # preferred / minimum column widths (see _layout_columns)
+        self._tree_w, self._col_drag = 0, False
+        self._lines, self._lines_job = [], None
         self.data = load_data()
         self.theme_name = self.data["settings"].get("theme") or system_theme()
         self.sort_col = self.data["settings"].get("sort_col") or ""
@@ -640,22 +926,26 @@ class App(tk.Tk):
         self.entry = ttk.Entry(top)
         self.entry.pack(side="left", fill="x", expand=True, padx=8)
         self.entry.bind("<Return>", lambda e: self.add_project())
-        self.btn_add = ttk.Button(top, text="Add project", command=self.add_project)
+        self.btn_add = self._button(top, "Add project", "plus", self.add_project)
         self.btn_add.pack(side="left")
 
         bar = ttk.Frame(self, padding=(10, 4, 10, 6))
         bar.pack(fill="x")
         self.toolbar = bar
-        self.btn_check = ttk.Button(bar, text="Check for updates", command=self.check_updates)
+        self.btn_check = self._button(bar, "Check for updates", "refresh", self.check_updates)
         self.btn_check.pack(side="left")
-        ttk.Button(bar, text="Mark as seen", command=self.mark_seen).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Open release page", command=self.open_release).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Remove", command=self.remove_selected).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Settings", command=self.open_settings).pack(side="right")
-        self.btn_theme = ttk.Button(bar, text="Dark mode", command=self.toggle_theme)
+        self._button(bar, "Mark as seen", "eye", self.mark_seen).pack(side="left", padx=(8, 0))
+        self._button(bar, "Open release page", "ext", self.open_release).pack(side="left", padx=(8, 0))
+        self._button(bar, "Remove", "trash", self.remove_selected).pack(side="left", padx=(8, 0))
+        self._button(bar, "Settings", "gear", self.open_settings).pack(side="right")
+        # Icon-only: shows the mode you will switch TO (moon = go dark, sun = go light).
+        self.btn_theme = self._button(bar, "", "moon", self.toggle_theme)
         self.btn_theme.pack(side="right", padx=(0, 8))
-        ttk.Button(bar, text="Export", command=self.export_json).pack(side="right", padx=(0, 8))
-        ttk.Button(bar, text="Import", command=self.import_json).pack(side="right", padx=(0, 8))
+        Tooltip(self.btn_theme,
+                lambda: "Switch to light mode" if self.theme_name == "dark" else "Switch to dark mode",
+                lambda: (THEMES[self.theme_name]["tip_bg"], THEMES[self.theme_name]["tip_fg"]))
+        self._button(bar, "Export", "export", self.export_json).pack(side="right", padx=(0, 8))
+        self._button(bar, "Import", "import", self.import_json).pack(side="right", padx=(0, 8))
 
         frame = ttk.Frame(self, padding=(10, 0, 10, 0))
         frame.pack(fill="both", expand=True)
@@ -675,13 +965,15 @@ class App(tk.Tk):
                 self.tree.heading(cid, text=text, command=lambda c=cid: self.sort_by(c))
             else:
                 self.tree.heading(cid, text=text)
-            self.tree.column(cid, width=w, minwidth=mw, stretch=(cid == "status"))
+            # No Tk "stretch": _layout_columns() resizes every column in proportion to the window.
+            self.tree.column(cid, width=w, minwidth=mw, stretch=False)
+            self._col_base[cid], self._col_min[cid] = w, mw
         self.update_headings()
         # Grid (not pack) so the scrollbars always keep their own space: with pack the
         # list took the full width of its columns and pushed the scrollbar out of view.
         self.vsb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         self.hsb = ttk.Scrollbar(frame, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=self.vsb.set, xscrollcommand=self.hsb.set)
+        self.tree.configure(yscrollcommand=self._on_yscroll, xscrollcommand=self.hsb.set)
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
         self.tree.grid(row=0, column=0, sticky="nsew")
@@ -691,12 +983,30 @@ class App(tk.Tk):
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         self.tree.bind("<Button-3>", self._popup)
         self.tree.bind("<Delete>", lambda e: self.remove_selected())
+        self.tree.bind("<F2>", lambda e: self.rename_selected())
+        self.tree.bind("<Button-1>", self._on_tree_click, add="+")
+        self.tree.bind("<Configure>", self._schedule_lines, add="+")
+        self.tree.bind("<Configure>", self._layout_columns, add="+")
+        self.tree.bind("<ButtonPress-1>", self._col_press, add="+")
+        self.tree.bind("<ButtonRelease-1>", self._col_release, add="+")
+        self.tree.bind("<Motion>", self._on_motion, add="+")
+        self.tree.bind("<Leave>", self._on_leave, add="+")
+        self.tree.bind("<MouseWheel>", lambda e: self._hide_pencil(), add="+")
+        # Hover pencil (rename). A Label placed over the list: Treeview cannot hold widgets in cells.
+        self.pencil = tk.Label(self.tree, bd=0, highlightthickness=0, cursor="hand2")
+        self.pencil.bind("<Button-1>", lambda e: self.begin_rename(self._pencil_row))
+        self.pencil.bind("<MouseWheel>", self._forward_wheel)
+        self.pencil.bind("<Leave>", self._on_leave)
+        self._pencil_row = None
 
         self.menu = tk.Menu(self, tearoff=0)
         self.pre_var = tk.BooleanVar(value=False)
         self.menu.add_command(label="Open release page", command=self.open_release)
         self.menu.add_command(label="Open repository", command=self.open_repo)
         self.menu.add_command(label="Mark as seen", command=self.mark_seen)
+        self.menu.add_separator()
+        self.menu.add_command(label="Rename...", accelerator="F2", command=self.rename_selected)
+        self.menu.add_command(label="Reset name", command=self.reset_name)
         self.menu.add_checkbutton(label="Include pre-releases", variable=self.pre_var,
                                   command=self.toggle_prerelease)
         self.menu.add_separator()
@@ -745,10 +1055,13 @@ class App(tk.Tk):
         for mnu in (self.menu, self.edit_menu, self.status_menu):
             mnu.configure(bg=c["field"], fg=c["fg"], activebackground=c["sel_bg"],
                           activeforeground=c["sel_fg"], disabledforeground=c["none_fg"], bd=0)
-        self.btn_theme.configure(text="Light mode" if self.theme_name == "dark" else "Dark mode")
+        self.refresh_icons()
         self.arrow_up = self._triangle(True, c["fg"])      # sort arrows follow the theme color
         self.arrow_down = self._triangle(False, c["fg"])
         self.update_headings()
+        self._pencil_imgs = {}
+        self._hide_pencil()
+        self._schedule_lines()
         set_titlebar_dark(self, self.theme_name == "dark")
 
     def toggle_theme(self):
@@ -757,6 +1070,276 @@ class App(tk.Tk):
         self.persist()
         self.apply_theme()
         self.set_status("%s mode." % self.theme_name.capitalize())
+
+    # ---- toolbar icons ---------------------------------------------------
+    def _button(self, parent, text, icon, command):
+        btn = ttk.Button(parent, text=text, command=command)
+        self._btn_icons.append((btn, icon))
+        return btn
+
+    def refresh_icons(self):
+        """(Re)draw every button icon in the theme's colors, with a greyed copy for disabled."""
+        c = THEMES[self.theme_name]
+        self._icon_refs = []
+        for btn, name in self._btn_icons:
+            if btn is getattr(self, "btn_theme", None):
+                name = "sun" if self.theme_name == "dark" else "moon"
+            normal = icon_image(self, name, self.icon_px, c["fg"])
+            grey = icon_image(self, name, self.icon_px, c["sub_fg"])
+            if normal is None or grey is None:
+                continue
+            self._icon_refs += [normal, grey]
+            icon_only = not str(btn.cget("text"))
+            btn.configure(image=(normal, "disabled", grey), compound="image" if icon_only else "left")
+
+    # ---- column widths ---------------------------------------------------
+    def _layout_columns(self, _event=None):
+        """Size the columns to the window, in proportion to their preferred widths.
+
+        Wider than the preferred total: every column grows by the same ratio. Narrower: each
+        column shrinks from its preferred width toward its minimum, all at the same rate, so
+        the columns hit their minimums together and no single column gets squeezed first.
+        Runs only when the list's width changes, so a column the user dragged keeps its width
+        until the window is resized.
+        """
+        width = self.tree.winfo_width()
+        if width <= 1 or width == self._tree_w:
+            return
+        self._tree_w = width
+        avail = width - 4  # the list draws a 2 px border on each side
+        ids = list(self._col_base)
+        pref = [self._col_base[c] for c in ids]
+        low = [self._col_min[c] for c in ids]
+        total_pref, total_low = sum(pref), sum(low)
+        if avail >= total_pref:
+            target = [p * avail / float(total_pref) for p in pref]
+        else:
+            t = max(0.0, (avail - total_low) / float(total_pref - total_low))
+            target = [lo + (p - lo) * t for p, lo in zip(pref, low)]
+        sizes = [max(lo, int(x)) for x, lo in zip(target, low)]
+        if avail >= total_low:                     # hand the rounding remainder to Status
+            sizes[ids.index("status")] += max(0, avail - sum(sizes))
+        for cid, w in zip(ids, sizes):
+            self.tree.column(cid, width=w)
+
+    def _col_press(self, event):
+        self._col_drag = self.tree.identify_region(event.x, event.y) == "separator"
+
+    def _col_release(self, _event):
+        if self._col_drag:  # the user resized a column: that is the new preferred layout
+            self._col_drag = False
+            self._col_base = {c: int(self.tree.column(c, "width")) for c in self._col_base}
+
+    # ---- row separators (thin lines between rows) ------------------------
+    def _on_yscroll(self, first, last):
+        self.vsb.set(first, last)
+        self._schedule_lines()
+        self._hide_pencil()
+
+    def _schedule_lines(self, _e=None):
+        if self._lines_job is None:
+            self._lines_job = self.after_idle(self._redraw_lines)
+
+    def _redraw_lines(self):
+        self._lines_job = None
+        tree = self.tree
+        ys = []
+        for iid in tree.get_children():
+            box = tree.bbox(iid)
+            if box:
+                ys.append(box[1] + box[3] - 1)
+        while len(self._lines) < len(ys):
+            f = tk.Frame(tree, height=1, bd=0, highlightthickness=0)
+            # A click that lands exactly on the 1 px line is passed on to the list.
+            f.bind("<Button-1>", lambda e: self._forward(e, "<Button-1>"))
+            f.bind("<ButtonRelease-1>", lambda e: self._forward(e, "<ButtonRelease-1>"))
+            f.bind("<Button-3>", lambda e: self._forward(e, "<Button-3>"))
+            f.bind("<MouseWheel>", self._forward_wheel)
+            self._lines.append(f)
+        color = THEMES[self.theme_name]["line"]
+        for i, f in enumerate(self._lines):
+            if i < len(ys):
+                f.configure(bg=color)
+                f.place(x=0, y=ys[i], relwidth=1, height=1)
+                f.lift()
+            else:
+                f.place_forget()
+
+    def _forward(self, event, sequence):
+        try:
+            self.tree.event_generate(sequence, x=event.x, y=event.widget.winfo_y() - 1,
+                                     rootx=event.x_root, rooty=event.y_root)
+        except tk.TclError:
+            pass
+
+    def _forward_wheel(self, event):
+        self.tree.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+    # ---- rename (pencil on hover, F2, right-click) ------------------------
+    def _row_bg(self, iid):
+        c = THEMES[self.theme_name]
+        if iid in self.tree.selection():
+            return c["sel_bg"], c["sel_fg"]
+        if "update" in self.tree.item(iid, "tags"):
+            return c["update_bg"], c["update_fg"]
+        return c["field"], c["fg"]
+
+    def _on_motion(self, event):
+        if self._editor:
+            return
+        iid = self.tree.identify_row(event.y)
+        if not iid or self.tree.identify_region(event.x, event.y) != "cell":
+            self._hide_pencil()
+            return
+        box = self.tree.bbox(iid, "name")
+        if not box:
+            self._hide_pencil()
+            return
+        x, y, w, h = box
+        bg, fg = self._row_bg(iid)
+        px = self.icon_px
+        img = self._pencil_imgs.get(fg)
+        if img is None:
+            img = self._pencil_imgs[fg] = icon_image(self, "pencil", px, fg)
+        if img is None:
+            return
+        self.pencil.configure(image=img, bg=bg)
+        self.pencil.place(x=x + w - px - 8, y=y + (h - px) // 2)
+        self.pencil.lift()
+        self._pencil_row = iid
+
+    def _on_tree_click(self, _event):
+        if self._editor:  # a click elsewhere in the list saves the name being typed
+            self.after_idle(lambda: self._finish_rename(True))
+
+    def _on_leave(self, _event=None):
+        # Moving from the list onto the pencil itself must not hide it.
+        under = self.winfo_containing(*self.winfo_pointerxy())
+        if under is not self.pencil:
+            self._hide_pencil()
+
+    def _hide_pencil(self):
+        self.pencil.place_forget()
+        self._pencil_row = None
+
+    def rename_selected(self):
+        sel = self.selected_projects()
+        if len(sel) != 1:
+            self.set_status("Select one project to rename.")
+            return
+        self.begin_rename(project_key(sel[0]))
+
+    def begin_rename(self, iid):
+        if not iid or self._editor or not self.tree.exists(iid):
+            return
+        self._close_editor(True)
+        self.tree.see(iid)
+        self.update_idletasks()
+        box = self.tree.bbox(iid, "name")
+        p = next((q for q in self.data["projects"] if project_key(q) == iid), None)
+        if not box or not p:
+            return
+        self._hide_pencil()
+        x, y, w, h = box
+        ent = ttk.Entry(self.tree)
+        ent.insert(0, display_name(p))
+        ent.place(x=x, y=y, width=w, height=h)
+        ent.focus_force()
+        ent.select_range(0, "end")
+        ent.icursor("end")
+        self.attach_edit_menu(ent)
+        self._editor = (ent, iid, p)
+        ent.bind("<Return>", lambda e: self._finish_rename(True))
+        ent.bind("<Escape>", lambda e: self._finish_rename(False))
+        # No save-on-focus-loss: opening the box's right-click menu (Paste) takes focus away
+        # and must not close it. Clicking elsewhere in the list saves it instead (_on_tree_click).
+
+    def _finish_rename(self, commit):
+        if not self._editor:
+            return
+        changed = self._close_editor(commit)
+        self.render()
+        if changed:
+            self.set_status(changed)
+
+    def _close_editor(self, commit):
+        """Close the rename box; returns a status message if a name changed, else ''."""
+        if not self._editor:
+            return ""
+        ent, _iid, p = self._editor
+        self._editor = None
+        text = clean_name(ent.get())
+        ent.destroy()
+        if not commit:
+            return ""
+        original = p.get("title") or p["repo"]
+        before = display_name(p)
+        if text and text != original:
+            p["custom_name"] = text
+        else:
+            p.pop("custom_name", None)  # blank or the GitHub name itself = back to the original
+        if display_name(p) == before:
+            return ""
+        self.persist()
+        return "Renamed to %s." % display_name(p) if p.get("custom_name") else "Name reset to %s." % display_name(p)
+
+    def reset_name(self):
+        sel = [p for p in self.selected_projects() if p.get("custom_name")]
+        if not sel:
+            self.set_status("Nothing to reset: the selection has no custom name.")
+            return
+        for p in sel:
+            p.pop("custom_name", None)
+        self.persist()
+        self.render()
+        self.set_status("Reset %d name(s) to the GitHub name." % len(sel))
+
+    # ---- About -----------------------------------------------------------
+    def show_about(self, parent=None):
+        c = THEMES[self.theme_name]
+        parent = parent or self
+        win = tk.Toplevel(self)
+        win.title("About " + APP_NAME)
+        win.configure(bg=c["bg"])
+        win.transient(parent)
+
+        def close():
+            win.destroy()
+            if parent is not self and parent.winfo_exists():
+                parent.grab_set()  # back to the Settings window, which is modal
+        win.resizable(False, False)
+        if self.app_icon is not None:
+            try:
+                win.iconphoto(False, self.app_icon)
+            except tk.TclError:
+                pass
+        body = ttk.Frame(win, padding=18)
+        body.pack(fill="both", expand=True)
+        if self.app_icon is not None:
+            tk.Label(body, image=self.app_icon, bg=c["bg"], bd=0).grid(row=0, column=0, rowspan=4, sticky="n", padx=(0, 16))
+        ttk.Label(body, text=APP_NAME, font=("Segoe UI", 14, "bold")).grid(row=0, column=1, sticky="w")
+        ttk.Label(body, text="Version %s" % APP_VERSION).grid(row=1, column=1, sticky="w")
+        ttk.Label(body, style="Sub.TLabel", wraplength=340, justify="left",
+                  text="Tracks the latest release of the GitHub projects you follow. "
+                       "No account, login or token needed. MIT License.").grid(row=2, column=1, sticky="w", pady=(6, 6))
+        link = tk.Label(body, text=REPO_URL, fg="#4da3ff" if self.theme_name == "dark" else "#0b57d0",
+                        bg=c["bg"], cursor="hand2", bd=0)
+        link.grid(row=3, column=1, sticky="w")
+        link.bind("<Button-1>", lambda e: webbrowser.open(REPO_URL))
+        btns = ttk.Frame(body)
+        btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(16, 0))
+
+        def copy_version():
+            self.clipboard_clear()
+            self.clipboard_append("%s v%s" % (APP_NAME, APP_VERSION))
+            self.set_status("Copied: %s v%s" % (APP_NAME, APP_VERSION))
+
+        ttk.Button(btns, text="Close", command=close).pack(side="right")
+        ttk.Button(btns, text="Copy version", command=copy_version).pack(side="right", padx=(0, 8))
+        set_titlebar_dark(win, self.theme_name == "dark")
+        win.grab_set()
+        win.bind("<Escape>", lambda e: close())
+        win.protocol("WM_DELETE_WINDOW", close)
 
     # ---- helpers ---------------------------------------------------------
     # ---- right-click menus for text (Cut / Copy / Paste / Select all) -------
@@ -902,6 +1485,13 @@ class App(tk.Tk):
 
     # ---- rendering -------------------------------------------------------
     def render(self):
+        self._close_editor(True)  # rows are rebuilt below: save a name being typed first
+        self._hide_pencil()
+        # Re-selecting the rows below fires <<TreeviewSelect>> a moment later, which would replace
+        # a status message such as "Renamed to ..." with the project description. Ignore those
+        # events until the event queue is empty (idle callbacks run after pending events).
+        self._suppress_select = True
+        self.after_idle(self._allow_select)
         selected = set(self.tree.selection())
         self.tree.delete(*self.tree.get_children())
         projects = sort_projects(self.data["projects"], self.sort_col, self.sort_asc)
@@ -922,7 +1512,7 @@ class App(tk.Tk):
                 tag = ""
             checked = (p.get("last_checked") or "")[:16].replace("T", " ")
             self.tree.insert("", "end", iid=project_key(p), tags=(tag,) if tag else (), values=(
-                p.get("title") or p["repo"],
+                display_name(p),
                 "%s/%s" % (p["owner"], p["repo"]),
                 release or "-",
                 (latest.get("published_at") or "")[:10] or "-",
@@ -932,6 +1522,7 @@ class App(tk.Tk):
         keep = [k for k in selected if self.tree.exists(k)]
         if keep:
             self.tree.selection_set(keep)
+        self._schedule_lines()
 
     def _on_double_click(self, event):
         """Open the release page only for a double-click on a project row.
@@ -942,14 +1533,21 @@ class App(tk.Tk):
         if self.tree.identify_region(event.x, event.y) == "cell" and self.tree.identify_row(event.y):
             self.open_release()
 
+    def _allow_select(self):
+        self._suppress_select = False
+
     def _on_select(self, _event=None):
+        if self._suppress_select:
+            return
         sel = self.selected_projects()
         if len(sel) == 1:
             p = sel[0]
             if p.get("error"):
                 self.set_status(p["error"])
-            elif p.get("description"):
-                self.set_status(p["description"])
+            else:
+                # Always replace the status text: skipping this when the About box is
+                # empty left the previous project's description on screen.
+                self.set_status(p.get("description") or NO_DESCRIPTION)
 
     def _popup(self, event):
         row = self.tree.identify_row(event.y)
@@ -959,7 +1557,12 @@ class App(tk.Tk):
             sel = self.selected_projects()
             if sel:
                 self.pre_var.set(bool(sel[0].get("include_prereleases")))
-            self.menu.tk_popup(event.x_root, event.y_root)
+            self.menu.entryconfigure("Rename...", state="normal" if len(sel) == 1 else "disabled")
+            self.menu.entryconfigure("Reset name", state="normal" if any(p.get("custom_name") for p in sel) else "disabled")
+            try:
+                self.menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                self.menu.grab_release()
 
     # ---- actions ---------------------------------------------------------
     def add_project(self):
@@ -1117,7 +1720,7 @@ class App(tk.Tk):
         if not sel:
             self.set_status("Select a project first.")
             return
-        names = ", ".join(p.get("title") or p["repo"] for p in sel[:3]) + ("..." if len(sel) > 3 else "")
+        names = ", ".join(display_name(p) for p in sel[:3]) + ("..." if len(sel) > 3 else "")
         if not messagebox.askyesno(APP_NAME, "Remove %d project(s)?\n%s" % (len(sel), names)):
             return
         drop = {project_key(p) for p in sel}
@@ -1218,7 +1821,8 @@ class App(tk.Tk):
             self.set_status("Settings saved.")
 
         btns = ttk.Frame(body)
-        btns.grid(row=4, column=0, sticky="e", pady=(12, 0))
+        btns.grid(row=4, column=0, sticky="we", pady=(12, 0))
+        ttk.Button(btns, text="About", command=lambda: self.show_about(win)).pack(side="left")
         ttk.Button(btns, text="Cancel", command=win.destroy).pack(side="right")
         ttk.Button(btns, text="Save", command=save).pack(side="right", padx=(0, 8))
         set_titlebar_dark(win, self.theme_name == "dark")
@@ -1231,6 +1835,11 @@ def main():
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except Exception:  # noqa: BLE001 - not Windows / not available
+        pass
+    try:  # own taskbar identity, so Windows shows this app's icon instead of Python's
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+    except Exception:  # noqa: BLE001
         pass
     App().mainloop()
 

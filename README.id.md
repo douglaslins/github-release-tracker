@@ -15,9 +15,13 @@ Aplikasi Windows portable berukuran kecil untuk memantau release terbaru dari pr
 - **Check for updates** menyegarkan semua proyek; proyek dengan release lebih baru disorot sebagai `Update available: v1.0 -> v1.1`
 - **Mark as seen** menghapus sorotan setelah Anda selesai menangani update
 - Klik dua kali pada proyek untuk membuka halaman release-nya di browser
+- **Ganti nama proyek** agar mudah dibaca: arahkan kursor ke baris lalu klik pensil (atau tekan **F2**, atau klik kanan > Rename). *Reset name* mengembalikan nama dari GitHub. Nama buatan Anda tersimpan dan ikut di Export
 - Klik header **Project**, **Repository**, **Published**, atau **Status** untuk mengurutkan (klik lagi untuk membalik; panah menunjukkan arahnya)
 - **Import / Export** daftar proyek sebagai file `.json` (gabungkan atau ganti saat import)
-- Tombol mode **terang / gelap** (awalnya mengikuti tema Windows Anda)
+- Mode **terang / gelap**: klik tombol bulan / matahari (awalnya mengikuti tema Windows Anda)
+- Semua kolom ikut melebar atau menyempit secara proporsional saat jendela diubah ukurannya (seret batas kolom untuk mengubah proporsinya)
+- Ikon kecil pada tombol, garis pemisah tipis antar baris, dan ikon aplikasi sendiri
+- Nomor versi di judul jendela; **Settings > About** juga menampilkannya
 - Menu klik kanan di kotak teks (Cut / Copy / Paste / Select all), dan klik kanan pada status bar untuk menyalin pesannya
 - Portable: satu file `.exe`, tanpa installer, tanpa entri registry
 
@@ -81,8 +85,10 @@ python github_release_tracker.py
 Cara manual:
 ```
 pip install pyinstaller
-pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_tracker.py
+pyinstaller --onefile --windowed --icon icon.ico --name GitHubReleaseTracker github_release_tracker.py
 ```
+
+`build.bat` juga memeriksa Python dan tkinter, memasang ikon, dan menulis file catatan release siap tempel berisi SHA-256 (`dist\release-notes-vX.Y.Z.md`). Untuk pemelihara: lihat [RELEASING.md](RELEASING.md) untuk daftar langkah merilis dan [CHANGELOG.md](CHANGELOG.md) untuk perubahan tiap versi.
 
 ## Cara kerjanya
 
@@ -96,6 +102,7 @@ pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_trac
 
 - Daftar Anda disimpan di `projects.json` **di sebelah file `.exe`**. Kalau folder itu hanya-baca (misalnya `Program Files`), aplikasi memakai `%APPDATA%\GitHubReleaseTracker`.
 - **Export** menulis file `.json` terpisah untuk cadangan atau pindah ke PC lain. **Import** membacanya kembali (dan juga bisa membaca `projects.json` dari build lama).
+- **Nama kustom ikut terbawa di file.** Kalau Anda mengganti nama proyek lalu membagikan hasil Export, **Import** di PC orang lain menampilkan nama Anda untuk proyek yang belum mereka punya. Untuk proyek yang sudah mereka punya, **Merge** membiarkan entri dan nama mereka apa adanya (nama Anda tidak diterapkan); **Replace** mengganti seluruh daftar mereka dengan isi file, termasuk namanya. File hasil Export v1.1.0 tetap bisa di-import di versi lama, tetapi nama kustomnya dibuang.
 - Di Settings ada kolom token GitHub (opsional). Token **tidak diperlukan** untuk pemakaian normal. Kalau Anda mengisinya, token disimpan **sebagai teks biasa** di `projects.json`, jadi jangan bagikan atau unggah file itu. File hasil Export tidak pernah berisi token.
 
 ## Keterbatasan
@@ -105,6 +112,19 @@ pyinstaller --onefile --windowed --name GitHubReleaseTracker github_release_trac
 - Feed adalah halaman publik GitHub, bukan API resmi; GitHub bisa mengubah atau membatasinya.
 - Repository privat tidak didukung tanpa token.
 - Tanggal "Published" berasal dari waktu update di feed, jadi mengedit release di GitHub bisa mengubahnya.
+- Deskripsi proyek (tampil di status bar saat dipilih) dibaca sekali ketika proyek ditambahkan dan tidak diperbarui lagi. Kalau API GitHub sedang tidak tersedia saat itu, proyek menampilkan "No description, website, or topics provided." walaupun repository-nya sebenarnya punya deskripsi.
+- Garis antar baris dan pensil rename adalah widget kecil yang digambar di atas daftar. Klik tepat pada garis setebal 1 piksel diteruskan ke barisnya, tetapi *klik dua kali* tepat di garis itu bisa gagal membuka halaman release.
+- Ikon berukuran 16 px (24 px pada layar dengan skala 150% atau lebih). Tidak semua pengaturan layar Windows sudah diuji.
+
+## File di repository ini
+
+| File | Isinya |
+|---|---|
+| `github_release_tracker.py` | Seluruh aplikasi (satu file Python, hanya library standar). |
+| `build.bat` | Membuat `dist\GitHubReleaseTracker.exe`. |
+| `icon.ico` | Ikon aplikasi yang dipakai saat build. |
+| `tools/` | Alat pemelihara: `release_info.py` (dipakai `build.bat`) dan `make_icons.py` (membuat ulang ikon; butuh Pillow, tidak diperlukan untuk memakai atau membuat aplikasi). |
+| `CHANGELOG.md`, `RELEASING.md` | Daftar perubahan, dan cara menerbitkan release. |
 
 ## Pemecahan masalah
 
