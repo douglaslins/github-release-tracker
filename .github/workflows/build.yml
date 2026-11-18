@@ -1,0 +1,60 @@
+name: Build Windows exe
+
+# OPTIONAL and MANUAL ONLY. Releases are built by hand with build.bat (see RELEASING.md) and the
+# SHA-256 in each release's notes belongs to that hand-built file. This workflow therefore never
+# runs by itself and never touches a Release: publishing a release or pushing a tag does nothing here.
+#
+# Use it only if you want a second, independent build made on GitHub's own Windows runner:
+#   Actions tab -> "Build Windows exe" -> Run workflow
+#   -> the exe and its checksum are kept as a downloadable build artifact (not attached to a Release).
+
+on:
+  workflow_dispatch:
+
+# Least privilege: the build can only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check that Python has tkinter and the source compiles
+        run: |
+          python -c "import tkinter; print('tkinter OK, Tk', tkinter.TkVersion)"
+          python -m py_compile github_release_tracker.py
+
+      - name: Install PyInstaller
+        run: python -m pip install "pyinstaller>=6,<7"
+
+      - name: Build the exe
+        run: >
+          python -m PyInstaller --noconfirm --clean --onefile --windowed
+          --icon icon.ico --name GitHubReleaseTracker github_release_tracker.py
+
+      - name: Check the exe exists, then write its SHA-256 checksum
+        run: |
+          $exe = "dist/GitHubReleaseTracker.exe"
+          if (-not (Test-Path $exe)) { throw "Build did not produce $exe" }
+          $size = (Get-Item $exe).Length
+          if ($size -lt 1MB) { throw "Exe is suspiciously small ($size bytes)" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "dist/GitHubReleaseTracker.exe.sha256" -Value "$hash  GitHubReleaseTracker.exe" -Encoding ascii
+          Write-Host "SHA-256: $hash  ($size bytes)"
+
+      - name: Keep the exe and checksum as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitHubReleaseTracker-windows
+          path: |
+            dist/GitHubReleaseTracker.exe
+            dist/GitHubReleaseTracker.exe.sha256
+          if-no-files-found: error
