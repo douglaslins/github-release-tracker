@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+- Download folder: in Settings, point the app at the folder where you keep your downloads. Each project then shows `Up to date 🟢 (latest)`, `Up to date 🟢 (Pre-release available)`, `Needs update 🟡` or `Not downloaded 🔴`.
+- Right-click > **Change folder...** scans a different folder for one project only. The new **Rescan files** button re-reads the folders without using the network.
+- SHA-256 check: a file counts as a release file when its SHA-256 matches, so renamed files are found. A file with the right name but a different hash shows `(hash mismatch)`. Turn it off in Settings. Hashes are remembered in `hash_cache.json`.
+- Projects on GitLab (also self-hosted), Gitea and Forgejo can be added next to GitHub projects. Right-click > **Set access token for this host...** stores a token for private projects or for hosts that limit anonymous requests. A token is only sent to its own host.
+- Several addresses can be pasted at once. Each one shows up in the list immediately as "Adding ..." and fills in when its lookup finishes. Adding, checking and scanning no longer wait for each other.
+- Faster checks: up to 6 projects are checked at the same time, with at most 3 requests at once to one host. A host that did not answer is skipped for 30 seconds, and a host that asks you to slow down is not asked again in the same run.
+- Only one copy of the app can run per data folder (`projects.lock`), because two copies would overwrite each other's changes.
+- `tools/make_icons.py` has a new `folder` icon. `hash_cache.json` and `projects.lock` are listed in `.gitignore`.
+
 ## [1.1.1]
 - Thin separator lines between columns, in the same colour as the row lines.
 - Column headers are left-aligned and bold.

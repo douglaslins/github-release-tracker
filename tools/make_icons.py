@@ -133,8 +133,13 @@ def i_pencil(d, N, P, W):
     d.polygon([P(.2, .66), P(.34, .8), P(.1, .9)], fill=255)                        # tip
 
 
+def i_folder(d, N, P, W):
+    d.polygon([P(.08, .22), P(.40, .22), P(.50, .34), P(.92, .34), P(.92, .82), P(.08, .82)],
+              outline=255, width=W(.09))
+
+
 ICONS = {"refresh": i_refresh, "eye": i_eye, "ext": i_ext, "trash": i_trash, "gear": i_gear, "plus": i_plus,
-         "moon": i_moon, "sun": i_sun, "import": i_import, "export": i_export, "pencil": i_pencil}
+         "moon": i_moon, "sun": i_sun, "import": i_import, "export": i_export, "pencil": i_pencil, "folder": i_folder}
 SIZES = (16, 24)
 
 

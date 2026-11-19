@@ -3,6 +3,9 @@ projects.json
 projects.json.bak
 projects.json.tmp
 github_release_tracker_*.json
+hash_cache.json
+hash_cache.json.tmp
+projects.lock
 
 # Build output
 dist/
