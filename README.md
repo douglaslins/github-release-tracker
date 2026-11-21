@@ -13,7 +13,7 @@
 
 Portable Windows app that tracks the latest release of projects on GitHub, GitLab, Gitea and Forgejo, and checks whether the matching files are in your download folder. It never downloads or installs a release.
 
-> Unofficial fork of [santosasarno-code/github-release-tracker](https://github.com/santosasarno-code/github-release-tracker/tree/v1.1.1). The additions below were proposed upstream in [PR #2](https://github.com/santosasarno-code/github-release-tracker/pull/2), which was closed without merging. Support for GitLab, Gitea and Forgejo has been tested against simulated servers only.
+> Unofficial fork of [santosasarno-code/github-release-tracker](https://github.com/santosasarno-code/github-release-tracker/tree/v1.1.1). The additions below were proposed upstream in [PR #2](https://github.com/santosasarno-code/github-release-tracker/pull/2), which was closed without merging.
 
 🇮🇩 [Baca dalam Bahasa Indonesia](README.id.md)
 
